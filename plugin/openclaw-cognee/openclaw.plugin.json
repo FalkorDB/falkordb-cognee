@@ -1,0 +1,46 @@
+{
+  "id": "openclaw-cognee",
+  "kind": "memory",
+  "uiHints": {
+    "sidecarUrl": {
+      "label": "Cognee sidecar URL",
+      "placeholder": "http://127.0.0.1:8765",
+      "help": "Base URL of the cognee-sidecar FastAPI service"
+    },
+    "userId": {
+      "label": "Default User ID",
+      "placeholder": "alice",
+      "help": "Reserved for future per-user scoping (not yet enforced server-side)"
+    },
+    "autoCapture": {
+      "label": "Auto-Capture",
+      "help": "Store conversation context after each agent turn"
+    },
+    "autoRecall": {
+      "label": "Auto-Recall",
+      "help": "Inject relevant memories before each agent turn"
+    },
+    "topK": {
+      "label": "Top K Results",
+      "placeholder": "5"
+    },
+    "timeoutMs": {
+      "label": "Sidecar timeout (ms)",
+      "advanced": true,
+      "placeholder": "60000"
+    }
+  },
+  "configSchema": {
+    "type": "object",
+    "additionalProperties": false,
+    "properties": {
+      "sidecarUrl": { "type": "string" },
+      "userId":     { "type": "string" },
+      "autoCapture":{ "type": "boolean" },
+      "autoRecall": { "type": "boolean" },
+      "topK":       { "type": "number" },
+      "timeoutMs":  { "type": "number" }
+    },
+    "required": []
+  }
+}

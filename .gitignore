@@ -1,0 +1,17 @@
+# Local config / venvs / state — never commit
+.venv/
+__pycache__/
+*.pyc
+node_modules/
+
+# OS junk
+.DS_Store
+
+# Editor
+.idea/
+.vscode/
+
+# Logs / backups
+*.log
+*.bak
+*.bak.*

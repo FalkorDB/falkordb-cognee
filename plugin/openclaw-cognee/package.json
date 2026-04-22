@@ -1,0 +1,17 @@
+{
+  "name": "openclaw-cognee",
+  "version": "0.1.0",
+  "type": "module",
+  "description": "Cognee memory backend for OpenClaw (sidecar over HTTP)",
+  "license": "Apache-2.0",
+  "main": "./index.js",
+  "files": [
+    "index.js",
+    "openclaw.plugin.json"
+  ],
+  "openclaw": {
+    "extensions": [
+      "./index.js"
+    ]
+  }
+}

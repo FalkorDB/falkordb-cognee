@@ -1,0 +1,16 @@
+[Unit]
+Description=Cognee sidecar for OpenClaw memory
+After=network-online.target falkordb.service
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=guyl
+WorkingDirectory=/home/guyl/work/script/coscripts
+EnvironmentFile=-/home/guyl/.openclaw/.env
+ExecStart=/home/guyl/.cognee-venv/bin/uvicorn 02_cognee_sidecar:app --host 127.0.0.1 --port 8765
+Restart=on-failure
+RestartSec=5
+
+[Install]
+WantedBy=default.target
