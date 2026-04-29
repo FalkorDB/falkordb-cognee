@@ -5,6 +5,18 @@ Run with:
     source ~/.cognee-venv/bin/activate
     python 01_test_cognee_falkor.py
 """
+# --- BEGIN sqlite3 shim ------------------------------------------------------
+# See 02_cognee_sidecar.py for the full explanation. Keep this block at the
+# very top: it must run before any cognee/sqlalchemy import.
+try:
+    import sys
+    import pysqlite3  # type: ignore
+    sys.modules["sqlite3"] = pysqlite3
+    sys.modules["sqlite3.dbapi2"] = pysqlite3.dbapi2
+except ImportError:
+    pass
+# --- END sqlite3 shim --------------------------------------------------------
+
 import asyncio
 import os
 import pathlib

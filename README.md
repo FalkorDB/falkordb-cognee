@@ -40,7 +40,11 @@ have to re-discover:
 - that `cognee_community_hybrid_adapter_falkor` must be imported for its
   side effects **before** calling Cognee,
 - that the FalkorDB adapter is versioned alongside Cognee and the two must
-  be upgraded together,
+  be upgraded together (Cognee 1.x ⟶ adapter ≥ 0.3.0),
+- that on Linux distros with an older system `libsqlite3` (e.g. Ubuntu
+  24.04 / 3.45.x) Cognee 1.x SEGVs in the SQLite SELECT parser unless
+  Python's `sqlite3` is shimmed to `pysqlite3-binary`
+  (see [`docs/SETUP.md` §3.1](docs/SETUP.md)),
 - the exact OpenClaw plugin descriptor shape required by `registerService`,
 - the OpenClaw config keys that silently abort the gateway if you get them
   wrong.
@@ -76,6 +80,19 @@ falkordb-cognee/
 The whole flow is documented in [`docs/SETUP.md`](docs/SETUP.md). The short
 version (assuming you have FalkorDB on `localhost:6379`, Python 3.11–3.13,
 Node 22, and `OPENAI_API_KEY` exported):
+
+### Pinned versions
+
+| Package | Version | Where it's pinned |
+|---------|---------|-------------------|
+| `cognee` | **1.0.3** | [`scripts/00_install_cognee.sh`](scripts/00_install_cognee.sh) |
+| `cognee-community-hybrid-adapter-falkor` | **>=0.3.0,<0.4** | [`scripts/00_install_cognee.sh`](scripts/00_install_cognee.sh) |
+| `falkordb` (Python client) | `>=1.0.9,<2.0.0` | [`scripts/00_install_cognee.sh`](scripts/00_install_cognee.sh) |
+| `pysqlite3-binary` | latest (bundles SQLite ≥3.51) | [`scripts/00_install_cognee.sh`](scripts/00_install_cognee.sh) — required on Linux, see [`docs/SETUP.md` §3.1](docs/SETUP.md) |
+
+To bump cognee, edit `scripts/00_install_cognee.sh` and the two
+references in `docs/SETUP.md` (one in §2 "What was installed", one in §10
+the upgrade recipe).
 
 ```bash
 cd scripts

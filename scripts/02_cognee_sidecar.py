@@ -1,3 +1,23 @@
+# --- BEGIN sqlite3 shim ------------------------------------------------------
+# Cognee 1.x uses a SELECT pattern that segfaults inside the system
+# libsqlite3 shipped on Ubuntu 24.04 (3.45.1) and other older distros:
+#
+#   __strlen_evex -> sqlite3DbStrDup -> sqlite3Select -> sqlite3_prepare_v2
+#   -> _sqlite3.cpython-312 -> sqlalchemy -> cognee
+#
+# Work around it by forcing pysqlite3-binary (bundles SQLite >= 3.51) in
+# place of the stdlib sqlite3 module. Must run BEFORE cognee/sqlalchemy
+# are imported. Harmless on platforms that already have a recent SQLite
+# (e.g. macOS).
+try:
+    import sys
+    import pysqlite3  # type: ignore
+    sys.modules["sqlite3"] = pysqlite3
+    sys.modules["sqlite3.dbapi2"] = pysqlite3.dbapi2
+except ImportError:
+    pass
+# --- END sqlite3 shim --------------------------------------------------------
+
 """
 Cognee sidecar: FastAPI service exposing /remember and /recall.
 
