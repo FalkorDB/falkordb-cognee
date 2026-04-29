@@ -22,12 +22,20 @@ source "$VENV/bin/activate"
 
 pip install --upgrade pip wheel
 pip install \
-  "cognee>=0.2.0" \
-  "cognee-community-hybrid-adapter-falkor" \
+  "cognee==1.0.3" \
+  "cognee-community-hybrid-adapter-falkor>=0.3.0,<0.4" \
   "falkordb>=1.0.9,<2.0.0" \
   "fastapi" \
   "uvicorn[standard]" \
-  "python-dotenv"
+  "python-dotenv" \
+  "pysqlite3-binary"
+
+# pysqlite3-binary ships a modern bundled SQLite (>=3.51). On Linux distros
+# whose system libsqlite3 is older (e.g. Ubuntu 24.04 = 3.45.1), Cognee 1.x
+# triggers a SIGSEGV inside libsqlite3's SELECT parser
+# (sqlite3DbStrDup -> __strlen_evex). The sidecar's first lines swap
+# sys.modules["sqlite3"] for pysqlite3 to avoid that crash. macOS users
+# don't strictly need this, but it's harmless to install.
 
 echo
 echo "Installed:"

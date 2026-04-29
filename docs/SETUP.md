@@ -30,7 +30,7 @@ These were already in place on this machine:
 | Component | Notes |
 |-----------|-------|
 | FalkorDB | Running on `localhost:6379` (RedisGraph-compatible). Hosts the `cognee` graph. |
-| Python 3.12 | System Python (`/usr/bin/python3`) — Cognee 0.5.x requires 3.11–3.13. |
+| Python 3.12 | System Python (`/usr/bin/python3`) — Cognee 1.x requires 3.11–3.13. |
 | Node 22 + OpenClaw CLI | Already installed globally as `openclaw`, with config at `~/.openclaw/openclaw.json` and extensions in `~/.openclaw/extensions/`. |
 | `OPENAI_API_KEY` | Available in shell (Cognee re-uses it as `LLM_API_KEY`). |
 
@@ -41,14 +41,23 @@ These were already in place on this machine:
 A Python virtualenv lives at:
 
 ```
-~/work/script/coscripts/.venv/
+~/.cognee-venv/
 ```
 
 with these pip packages (installed by `00_install_cognee.sh`):
 
-- `cognee==0.5.6`
-- `cognee-community-hybrid-adapter-falkor`  ← provides FalkorDB graph + vector adapters
-- `fastapi`, `uvicorn[standard]`, `httpx`   ← for the sidecar
+- `cognee==1.0.3`
+- `cognee-community-hybrid-adapter-falkor>=0.3.0,<0.4`  ← FalkorDB graph + vector adapters (1.x compatible)
+- `pysqlite3-binary`                          ← bundled SQLite ≥3.51 (see §3.1 below)
+- `fastapi`, `uvicorn[standard]`, `python-dotenv`  ← for the sidecar
+
+Cognee 1.0 highlights (vs 0.5.x):
+
+- New high-level API: `remember` / `recall` / `forget` / `improve`
+  (the V1 `add` / `cognify` / `search` calls used here still work).
+- Session memory is on by default (set `CACHING=false` to disable).
+- Multi-user access control is on by default
+  (set `ENABLE_BACKEND_ACCESS_CONTROL=false` to keep single-user mode).
 
 ---
 
@@ -85,6 +94,43 @@ import cognee
 
 Cognee still uses **SQLite** for its own relational metadata (datasets,
 pipeline state). That's expected and unavoidable.
+
+### 3.1. SQLite gotcha on Linux (Ubuntu 24.04 and similar)
+
+Cognee 1.x triggers a `SIGSEGV` inside the **system** `libsqlite3.so.0`
+shipped on Ubuntu 24.04 (3.45.1) the moment Cognee runs its first SELECT
+through SQLAlchemy. The crashing stack (from `gdb` on the core dump):
+
+```
+__strlen_evex                  ← SEGV in libc strlen
+sqlite3DbStrDup
+sqlite3WalkSelect / sqlite3SelectPrep / sqlite3Select
+sqlite3_prepare_v2
+_sqlite3.cpython-312           ← Python stdlib sqlite3 extension
+sqlalchemy ... cognee.search(...)
+```
+
+The fix is to make Python's `sqlite3` import resolve to the **bundled**
+SQLite that ships with the `pysqlite3-binary` wheel (currently 3.51.x).
+Both `01_test_cognee_falkor.py` and `02_cognee_sidecar.py` start with
+this 10-line shim **before** any `cognee` / `sqlalchemy` import:
+
+```python
+try:
+    import sys
+    import pysqlite3
+    sys.modules["sqlite3"] = pysqlite3
+    sys.modules["sqlite3.dbapi2"] = pysqlite3.dbapi2
+except ImportError:
+    pass
+```
+
+`pysqlite3-binary` is installed by `00_install_cognee.sh`. macOS ships a
+recent SQLite already, so the shim is a no-op there but does no harm.
+
+> A `sitecustomize.py` placed inside the venv does **not** work on
+> Ubuntu, because `/usr/lib/python3.12/sitecustomize.py` is found first
+> and shadows it. The shim must live in the entrypoint script.
 
 ---
 
@@ -269,3 +315,64 @@ grep -a 'openclaw-cognee\|ready (' /tmp/openclaw/openclaw-$(date +%F).log | tail
 After step 5 you should see `ready (2 plugins: openclaw-cognee, telegram; ...)`
 and on the next agent turn `captured turn for guy (... chars)` in the gateway log.
 
+
+---
+
+## 10. Upgrading from Cognee 0.5.x to 1.0.x
+
+If you originally installed this stack on Cognee 0.5.x, an in-place
+upgrade to 1.0.x needs three things:
+
+1. **Bump the Python packages** (cognee + the FalkorDB adapter must move
+   together — 1.x cognee requires `cognee-community-hybrid-adapter-falkor>=0.3.0`).
+2. **Add the `pysqlite3` shim** to every Python entrypoint (sidecar +
+   POC). See §3.1.
+3. **Wipe stale on-disk state**, because the 1.0 schema (relational
+   metadata under `~/.cognee/` and FalkorDB graphs) is not
+   backwards-compatible with 0.5.
+
+End-to-end recipe used on Ubuntu 24.04:
+
+```bash
+# 1. Stop the sidecar
+sudo systemctl stop cognee-sidecar
+
+# 2. Snapshot Cognee state (SQLite + caches)
+cp -a ~/.cognee ~/.cognee.bak.$(date +%Y%m%d_%H%M%S)
+
+# 3. Upgrade venv
+~/.cognee-venv/bin/pip install --upgrade \
+    'cognee==1.0.3' \
+    'cognee-community-hybrid-adapter-falkor>=0.3.0,<0.4' \
+    pysqlite3-binary
+
+# 4. Confirm the shim is present at the top of:
+#      scripts/01_test_cognee_falkor.py
+#      scripts/02_cognee_sidecar.py
+
+# 5. Wipe stale state for a clean 1.0 schema
+mv ~/.cognee ~/.cognee.preupgrade.$(date +%Y%m%d_%H%M%S)
+mkdir -p ~/.cognee/{system,data}
+redis-cli -p 6379 FLUSHALL    # FalkorDB: drops ALL graphs (not just cognee)
+
+# 6. Restart and smoke
+sudo systemctl start cognee-sidecar
+curl -s http://127.0.0.1:8765/healthz
+curl -s -X POST http://127.0.0.1:8765/remember \
+    -H 'Content-Type: application/json' \
+    -d '{"text":"the answer is 42","user_id":"probe"}'
+curl -s -X POST http://127.0.0.1:8765/recall \
+    -H 'Content-Type: application/json' \
+    -d '{"query":"what is the answer?","user_id":"probe","top_k":3}'
+```
+
+Skipping step 5 will surface as either:
+
+- the same `SIGSEGV` crash loop in `cognee-sidecar.service` (libsqlite3
+  parsing a stale schema row), or
+- silent "no results" responses because the graph nodes were created by
+  the old extractor and the 1.0 retrievers don't recognise them.
+
+If you only want to preserve memory and the upgrade scares you, snapshot
+FalkorDB first with `BGSAVE` and copy `dump.rdb` aside before
+`FLUSHALL`.
