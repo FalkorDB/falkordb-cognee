@@ -81,6 +81,19 @@ The whole flow is documented in [`docs/SETUP.md`](docs/SETUP.md). The short
 version (assuming you have FalkorDB on `localhost:6379`, Python 3.11–3.13,
 Node 22, and `OPENAI_API_KEY` exported):
 
+### Pinned versions
+
+| Package | Version | Where it's pinned |
+|---------|---------|-------------------|
+| `cognee` | **1.0.3** | [`scripts/00_install_cognee.sh`](scripts/00_install_cognee.sh) |
+| `cognee-community-hybrid-adapter-falkor` | **>=0.3.0,<0.4** | [`scripts/00_install_cognee.sh`](scripts/00_install_cognee.sh) |
+| `falkordb` (Python client) | `>=1.0.9,<2.0.0` | [`scripts/00_install_cognee.sh`](scripts/00_install_cognee.sh) |
+| `pysqlite3-binary` | latest (bundles SQLite ≥3.51) | [`scripts/00_install_cognee.sh`](scripts/00_install_cognee.sh) — required on Linux, see [`docs/SETUP.md` §3.1](docs/SETUP.md) |
+
+To bump cognee, edit `scripts/00_install_cognee.sh` and the two
+references in `docs/SETUP.md` (one in §2 "What was installed", one in §10
+the upgrade recipe).
+
 ```bash
 cd scripts
 
