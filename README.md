@@ -49,6 +49,39 @@ have to re-discover:
 - the OpenClaw config keys that silently abort the gateway if you get them
   wrong.
 
+## Supported Cognee versions
+
+Verified against **Cognee 1.0.x and 1.1.x** with
+`cognee-community-hybrid-adapter-falkor>=0.3.0,<0.4`. The pinned default
+in `scripts/00_install_cognee.sh` is **`cognee==1.1.0`**.
+
+Cognee 1.1.0 introduced a few breaking changes the sidecar handles for
+you, but they're worth knowing about if you embed Cognee 1.1.0 yourself:
+
+- **New dataset handler env vars** — `GRAPH_DATASET_DATABASE_HANDLER`
+  and `VECTOR_DATASET_DATABASE_HANDLER` must be set to
+  `falkor_graph_local` and `falkor_vector_local` respectively for
+  Cognee to route per-dataset graphs/vectors through the FalkorDB
+  hybrid adapter. The sidecar sets both defaults.
+- **`cognee.search()` response shape changed** — 1.0.x returned
+  `list[str]`; 1.1.0 returns `list[dict]` of the form
+  `{dataset_id, dataset_name, dataset_tenant_id, search_result: [str,...]}`.
+  The `/recall` endpoint flattens this back to `list[str]` so the
+  documented `{ok, results: string[]}` contract holds.
+- **Default LLM changed to `gpt-5-mini`** — Cognee 1.1.0 ships two
+  separate model knobs (`LLM_MODEL` and `BAML_LLM_MODEL`, the latter
+  for cognify's extraction pipeline) and defaults **both** to
+  `gpt-5-mini`, which requires OpenAI organization verification.
+  The sidecar pins both to `openai/gpt-4o-mini` / `gpt-4o-mini` and
+  mirrors `LLM_API_KEY → BAML_LLM_API_KEY`.
+- **New resource-cap env vars** — `DATABASE_MAX_LRU_CACHE_SIZE` and
+  `DATASET_QUEUE_MAX_CONCURRENT` bound the new dataset LRU eviction
+  and cognify concurrency added in 1.1.0; small defaults (4 / 2) are
+  set by the sidecar.
+- **`COGNEE_SKIP_CONNECTION_TEST`** — 1.1.0 added a startup LLM
+  connectivity probe that can hang on slow/cold networks (notably
+  inside Docker). Set to `true` to bypass.
+
 ## What's in here
 
 ```

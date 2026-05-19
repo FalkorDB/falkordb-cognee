@@ -22,7 +22,7 @@ source "$VENV/bin/activate"
 
 pip install --upgrade pip wheel
 pip install \
-  "cognee==1.0.3" \
+  "cognee==1.1.0" \
   "cognee-community-hybrid-adapter-falkor>=0.3.0,<0.4" \
   "falkordb>=1.0.9,<2.0.0" \
   "fastapi" \

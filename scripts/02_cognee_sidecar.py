@@ -43,6 +43,15 @@ if os.getenv("OPENAI_API_KEY") and not os.getenv("LLM_API_KEY"):
     os.environ["LLM_API_KEY"] = os.environ["OPENAI_API_KEY"]
 os.environ.setdefault("LLM_PROVIDER", "openai")
 os.environ.setdefault("LLM_MODEL", "openai/gpt-4o-mini")
+# Cognee 1.1.0 added a SECOND model knob — the BAML-instructed
+# extraction pipeline used by cognify — and defaults BOTH knobs to
+# "gpt-5-mini" / "openai/gpt-5-mini", which require OpenAI org
+# verification. Pin BAML_LLM_MODEL to gpt-4o-mini too, otherwise
+# cognify retries forever with a NotFoundError.
+os.environ.setdefault("BAML_LLM_PROVIDER", "openai")
+os.environ.setdefault("BAML_LLM_MODEL", "gpt-4o-mini")
+if os.getenv("LLM_API_KEY") and not os.getenv("BAML_LLM_API_KEY"):
+    os.environ["BAML_LLM_API_KEY"] = os.environ["LLM_API_KEY"]
 os.environ.setdefault("EMBEDDING_PROVIDER", "openai")
 os.environ.setdefault("EMBEDDING_MODEL", "openai/text-embedding-3-small")
 os.environ.setdefault("EMBEDDING_DIMENSIONS", "1536")
@@ -51,6 +60,12 @@ os.environ.setdefault("VECTOR_DATASET_DATABASE_HANDLER", "falkor_vector_local")
 os.environ.setdefault("GRAPH_DB_URL", "localhost")
 os.environ.setdefault("GRAPH_DB_PORT", "6379")
 os.environ.setdefault("ENABLE_BACKEND_ACCESS_CONTROL", "false")
+# Cognee 1.1.0 added a startup LLM connectivity test that can hang
+# on slow/cold networks. The cap-on-resources tunables below were
+# also added in 1.1.0 to bound the new dataset LRU + cognify queue.
+os.environ.setdefault("COGNEE_SKIP_CONNECTION_TEST", "false")
+os.environ.setdefault("DATABASE_MAX_LRU_CACHE_SIZE", "4")
+os.environ.setdefault("DATASET_QUEUE_MAX_CONCURRENT", "2")
 
 import cognee
 from cognee import SearchType, config
@@ -120,7 +135,21 @@ async def recall(body: RecallIn) -> dict:
             query_type=SearchType.GRAPH_COMPLETION,
             query_text=body.query,
         )
-        return {"ok": True, "results": list(results)[: body.top_k]}
+        # Cognee 1.0.x returned list[str] directly. Cognee 1.1.0 wraps
+        # each hit in {dataset_id, dataset_name, dataset_tenant_id,
+        # search_result: [str, ...]}. Flatten back to list[str] so the
+        # documented `{ok, results: string[]}` contract holds across
+        # both versions.
+        flat: list[str] = []
+        for r in results or []:
+            if isinstance(r, str):
+                flat.append(r)
+            elif isinstance(r, dict) and isinstance(r.get("search_result"), list):
+                for s in r["search_result"]:
+                    flat.append(s if isinstance(s, str) else str(s))
+            else:
+                flat.append(str(r))
+        return {"ok": True, "results": flat[: body.top_k]}
     except Exception as exc:
         raise HTTPException(status_code=500, detail=str(exc)) from exc
 
