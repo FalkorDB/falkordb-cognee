@@ -118,7 +118,7 @@ Node 22, and `OPENAI_API_KEY` exported):
 
 | Package | Version | Where it's pinned |
 |---------|---------|-------------------|
-| `cognee` | **1.0.3** | [`scripts/00_install_cognee.sh`](scripts/00_install_cognee.sh) |
+| `cognee` | **1.1.0** | [`scripts/00_install_cognee.sh`](scripts/00_install_cognee.sh) |
 | `cognee-community-hybrid-adapter-falkor` | **>=0.3.0,<0.4** | [`scripts/00_install_cognee.sh`](scripts/00_install_cognee.sh) |
 | `falkordb` (Python client) | `>=1.0.9,<2.0.0` | [`scripts/00_install_cognee.sh`](scripts/00_install_cognee.sh) |
 | `pysqlite3-binary` | latest (bundles SQLite ≥3.51) | [`scripts/00_install_cognee.sh`](scripts/00_install_cognee.sh) — required on Linux, see [`docs/SETUP.md` §3.1](docs/SETUP.md) |
