@@ -85,8 +85,14 @@ async def main() -> None:
         print(f"\nQ: {q}")
         results = await cognee.search(query_type=SearchType.GRAPH_COMPLETION,
                                       query_text=q)
+        # Cognee 1.1.0 wraps each hit in a {search_result: [str, ...]}
+        # dict; 1.0.x returned bare strings. Print readably for both.
         for r in results:
-            print(f"  → {r}")
+            if isinstance(r, dict) and isinstance(r.get("search_result"), list):
+                for s in r["search_result"]:
+                    print(f"  → {s}")
+            else:
+                print(f"  → {r}")
 
     print("\nDone. Check FalkorDB browser for graph data.")
 
