@@ -46,7 +46,7 @@ A Python virtualenv lives at:
 
 with these pip packages (installed by `00_install_cognee.sh`):
 
-- `cognee==1.0.3`
+- `cognee==1.1.0`
 - `cognee-community-hybrid-adapter-falkor>=0.3.0,<0.4`  ← FalkorDB graph + vector adapters (1.x compatible)
 - `pysqlite3-binary`                          ← bundled SQLite ≥3.51 (see §3.1 below)
 - `fastapi`, `uvicorn[standard]`, `python-dotenv`  ← for the sidecar
@@ -342,7 +342,7 @@ cp -a ~/.cognee ~/.cognee.bak.$(date +%Y%m%d_%H%M%S)
 
 # 3. Upgrade venv
 ~/.cognee-venv/bin/pip install --upgrade \
-    'cognee==1.0.3' \
+    'cognee==1.1.0' \
     'cognee-community-hybrid-adapter-falkor>=0.3.0,<0.4' \
     pysqlite3-binary
 
