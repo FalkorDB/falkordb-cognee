@@ -23,12 +23,13 @@ glue we used to plug the result into OpenClaw as a memory plugin:
         │
         ▼
    Memory plugin (Node)  ─── HTTP ───►  Cognee sidecar
-                                        (Python FastAPI, systemd service,
+                                        (Python FastAPI, host venv or Docker,
                                          listens on 127.0.0.1:8765)
                                               │
                                               ▼
                                         FalkorDB (Redis fork)
-                                          graph "cognee"
+                                          one named graph per user
+                                          (e.g. "will", "will__elizabeth")
                                           + vector indexes
 ```
 
@@ -48,6 +49,19 @@ have to re-discover:
 - the exact OpenClaw plugin descriptor shape required by `registerService`,
 - the OpenClaw config keys that silently abort the gateway if you get them
   wrong.
+
+## Multiple graphs & friendly naming
+
+In multi-user mode (`ENABLE_BACKEND_ACCESS_CONTROL=true`, the default here)
+Cognee routes each user to their **own** isolated FalkorDB graph. The
+community adapter would name those after the dataset UUID; this repo instead
+registers thin handler subclasses (`scripts/cognee_falkor_naming.py`) through
+the adapter's **public** extension API so graphs get readable names —
+`will@example.com` → graph `will`, `will_agent_elizabeth@example.com` →
+`will__elizabeth`. The rule is fully env-driven (overrides map, email
+local-part, dataset-id, or static); see
+[`docs/SETUP.md` §3.2](docs/SETUP.md). Set
+`ENABLE_BACKEND_ACCESS_CONTROL=false` for legacy single-graph mode.
 
 ## Supported Cognee versions
 
@@ -93,6 +107,7 @@ falkordb-cognee/
 │   ├── 00_install_cognee.sh
 │   ├── 01_test_cognee_falkor.py / 01_run.sh
 │   ├── 02_cognee_sidecar.py
+│   ├── cognee_falkor_naming.py  ← friendly FalkorDB graph names (config-driven)
 │   ├── 03_run_sidecar.sh
 │   ├── 04_cognee_sidecar.service / 04_install_service.sh / 04b_status.sh / 04c_takeover.sh
 │   ├── 05_smoke_sidecar.sh
@@ -100,6 +115,10 @@ falkordb-cognee/
 │   ├── 09b_fix_slot.sh
 │   ├── 10_redeploy_plugin.sh
 │   └── 11b_set_userid_guy.sh
+├── docker/                 ← run the sidecar as a container (alternative to host venv)
+│   ├── Dockerfile
+│   ├── docker-compose.yaml
+│   └── .env.example
 ├── plugin/
 │   └── openclaw-cognee/    ← the Node plugin source (3 files)
 │       ├── package.json
@@ -144,9 +163,13 @@ cd scripts
 ## Status
 
 - ✅ Standalone Cognee + FalkorDB POC working
-- ✅ FastAPI sidecar running as a systemd service (`cognee-sidecar.service`)
+- ✅ FastAPI sidecar running both as a systemd service (`cognee-sidecar.service`)
+  and as a Docker container (`docker/`)
+- ✅ Per-user **multiple, isolated FalkorDB graphs** with human-readable,
+  config-driven names (`scripts/cognee_falkor_naming.py`, see
+  [`docs/SETUP.md` §3.2](docs/SETUP.md))
 - ✅ OpenClaw memory plugin (`openclaw-cognee`) registered and capturing /
-  recalling turns under user `guy`
+  recalling turns per user
 - 🚧 `examples/` to be filled with sample prompts / graph queries
 
 ## Why FalkorDB

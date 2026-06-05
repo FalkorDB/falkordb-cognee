@@ -15,3 +15,7 @@ node_modules/
 *.log
 *.bak
 *.bak.*
+
+# Docker sidecar local state / secrets
+.env
+docker/cognee-state/

@@ -8,7 +8,7 @@
 # Work around it by forcing pysqlite3-binary (bundles SQLite >= 3.51) in
 # place of the stdlib sqlite3 module. Must run BEFORE cognee/sqlalchemy
 # are imported. Harmless on platforms that already have a recent SQLite
-# (e.g. macOS).
+# (e.g. macOS, or the cognee/cognee Docker image).
 try:
     import sys
     import pysqlite3  # type: ignore
@@ -19,9 +19,20 @@ except ImportError:
 # --- END sqlite3 shim --------------------------------------------------------
 
 """
-Cognee sidecar: FastAPI service exposing /remember and /recall.
+Cognee sidecar: FastAPI service exposing /remember, /recall and /prune.
 
-The OpenClaw Node.js plugin will call this over localhost HTTP.
+The OpenClaw Node.js plugin calls this over localhost HTTP.
+
+Multi-user / multi-graph
+------------------------
+With ``ENABLE_BACKEND_ACCESS_CONTROL=true`` (the default here) Cognee gives
+every user their own isolated FalkorDB graph + vector store. The caller's
+``user_id`` is deterministically mapped to a Cognee User (created on first
+use), e.g. the OpenClaw agent-scoped id ``guy:agent:elizabeth`` becomes the
+email ``guy_agent_elizabeth@example.com``. The friendly-naming handlers in
+``cognee_falkor_naming`` then give that user a readable graph name
+(``guy__elizabeth``) instead of the dataset UUID. Set
+``ENABLE_BACKEND_ACCESS_CONTROL=false`` for legacy single-graph mode.
 
 Run with:
     source ~/.cognee-venv/bin/activate
@@ -55,14 +66,29 @@ if os.getenv("LLM_API_KEY") and not os.getenv("BAML_LLM_API_KEY"):
 os.environ.setdefault("EMBEDDING_PROVIDER", "openai")
 os.environ.setdefault("EMBEDDING_MODEL", "openai/text-embedding-3-small")
 os.environ.setdefault("EMBEDDING_DIMENSIONS", "1536")
-os.environ.setdefault("GRAPH_DATASET_DATABASE_HANDLER", "falkor_graph_local")
-os.environ.setdefault("VECTOR_DATASET_DATABASE_HANDLER", "falkor_vector_local")
 os.environ.setdefault("GRAPH_DB_URL", "localhost")
 os.environ.setdefault("GRAPH_DB_PORT", "6379")
-os.environ.setdefault("ENABLE_BACKEND_ACCESS_CONTROL", "false")
-# Cognee 1.1.0 added a startup LLM connectivity test that can hang
-# on slow/cold networks. The cap-on-resources tunables below were
-# also added in 1.1.0 to bound the new dataset LRU + cognify queue.
+
+# Per-user isolated graphs (multiple named FalkorDB graphs). Set to "false"
+# for legacy single-graph mode. See docs/SETUP.md.
+os.environ.setdefault("ENABLE_BACKEND_ACCESS_CONTROL", "true")
+
+# Friendly, human-readable FalkorDB graph names instead of dataset UUIDs.
+# Selects the cognee_falkor_naming handlers registered below. The naming
+# rule itself is configured via COGNEE_GRAPH_NAME_* env vars (see that
+# module's docstring). Set COGNEE_FRIENDLY_GRAPH_NAMES=false to keep the
+# adapter's native UUID names.
+_FRIENDLY_NAMES = os.getenv("COGNEE_FRIENDLY_GRAPH_NAMES", "true").lower() == "true"
+if _FRIENDLY_NAMES:
+    os.environ.setdefault("GRAPH_DATASET_DATABASE_HANDLER", "falkor_graph_local_named")
+    os.environ.setdefault("VECTOR_DATASET_DATABASE_HANDLER", "falkor_vector_local_named")
+else:
+    os.environ.setdefault("GRAPH_DATASET_DATABASE_HANDLER", "falkor_graph_local")
+    os.environ.setdefault("VECTOR_DATASET_DATABASE_HANDLER", "falkor_vector_local")
+
+# Cognee 1.1.0 added a startup LLM connectivity test that can hang on
+# slow/cold networks (notably inside Docker). The cap-on-resources
+# tunables below bound the new dataset LRU + cognify queue added in 1.1.0.
 os.environ.setdefault("COGNEE_SKIP_CONNECTION_TEST", "false")
 os.environ.setdefault("DATABASE_MAX_LRU_CACHE_SIZE", "4")
 os.environ.setdefault("DATASET_QUEUE_MAX_CONCURRENT", "2")
@@ -70,6 +96,15 @@ os.environ.setdefault("DATASET_QUEUE_MAX_CONCURRENT", "2")
 import cognee
 from cognee import SearchType, config
 from cognee_community_hybrid_adapter_falkor import register  # noqa: F401
+from cognee.infrastructure.databases.relational import create_db_and_tables
+from cognee.modules.users.methods import create_user, get_user_by_email
+
+# Register the friendly graph-name handlers unconditionally (they are only
+# *selected* when COGNEE_FRIENDLY_GRAPH_NAMES is on, but registering them
+# always means rows that stored a *_named handler still resolve).
+from cognee_falkor_naming import register_named_handlers
+
+register_named_handlers()
 
 
 def _configure() -> None:
@@ -89,14 +124,48 @@ def _configure() -> None:
     })
 
 
+# --- per-user mapping --------------------------------------------------------
+_user_cache: dict[str, object] = {}
+_user_cache_lock = asyncio.Lock()
+_lock = asyncio.Lock()
+
+
+def _email_for(user_id: str | None) -> str:
+    """Deterministic, valid email derived from the caller's user_id.
+
+    Cognee/pydantic-email requires a real-looking TLD, so we use @example.com.
+    Non-alphanumeric characters (e.g. the ``:`` in OpenClaw's
+    ``guy:agent:elizabeth``) collapse to ``_``.
+    """
+    raw = (user_id or "default").strip() or "default"
+    safe = "".join(ch if ch.isalnum() else "_" for ch in raw).strip("_").lower()
+    safe = safe or "default"
+    return f"{safe}@example.com"
+
+
+async def _ensure_user(user_id: str | None):
+    email = _email_for(user_id)
+    if email in _user_cache:
+        return _user_cache[email]
+    async with _user_cache_lock:
+        if email in _user_cache:
+            return _user_cache[email]
+        try:
+            u = await create_user(email=email, password="x")
+        except Exception:
+            u = await get_user_by_email(email)
+        _user_cache[email] = u
+        return u
+
+
 @asynccontextmanager
 async def lifespan(_: FastAPI):
     _configure()
+    await create_db_and_tables()
     yield
 
 
 app = FastAPI(title="cognee-sidecar", lifespan=lifespan)
-_lock = asyncio.Lock()
 
 
 class RememberIn(BaseModel):
@@ -119,21 +188,24 @@ async def health() -> dict:
 
 @app.post("/remember")
 async def remember(body: RememberIn) -> dict:
+    user = await _ensure_user(body.user_id)
     async with _lock:
         try:
-            await cognee.add(body.text)
-            await cognee.cognify()
-            return {"ok": True}
+            await cognee.add(body.text, user=user)
+            await cognee.cognify(user=user)
+            return {"ok": True, "user": user.email}
         except Exception as exc:
             raise HTTPException(status_code=500, detail=str(exc)) from exc
 
 
 @app.post("/recall")
 async def recall(body: RecallIn) -> dict:
+    user = await _ensure_user(body.user_id)
     try:
         results = await cognee.search(
             query_type=SearchType.GRAPH_COMPLETION,
             query_text=body.query,
+            user=user,
         )
         # Cognee 1.0.x returned list[str] directly. Cognee 1.1.0 wraps
         # each hit in {dataset_id, dataset_name, dataset_tenant_id,
@@ -149,7 +221,7 @@ async def recall(body: RecallIn) -> dict:
                     flat.append(s if isinstance(s, str) else str(s))
             else:
                 flat.append(str(r))
-        return {"ok": True, "results": flat[: body.top_k]}
+        return {"ok": True, "user": user.email, "results": flat[: body.top_k]}
     except Exception as exc:
         raise HTTPException(status_code=500, detail=str(exc)) from exc
 
@@ -157,6 +229,11 @@ async def recall(body: RecallIn) -> dict:
 @app.post("/prune")
 async def prune() -> dict:
     async with _lock:
-        await cognee.prune.prune_data()
-        await cognee.prune.prune_system(metadata=True)
-        return {"ok": True}
+        try:
+            await cognee.prune.prune_data()
+            await cognee.prune.prune_system(metadata=True)
+            await create_db_and_tables()
+            _user_cache.clear()
+            return {"ok": True}
+        except Exception as exc:
+            raise HTTPException(status_code=500, detail=str(exc)) from exc

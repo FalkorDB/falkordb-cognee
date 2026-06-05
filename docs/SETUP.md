@@ -17,7 +17,8 @@ End-to-end shape:
                                                                   │
                                                                   ▼
                                                             FalkorDB (Redis fork)
-                                                              graph "cognee"
+                                                              one named graph per user
+                                                              (e.g. "will", "will__elizabeth")
                                                               + vector indexes
 ```
 
@@ -74,15 +75,25 @@ export EMBEDDING_PROVIDER=openai
 export EMBEDDING_MODEL=openai/text-embedding-3-small
 export EMBEDDING_DIMENSIONS=1536
 
-# These two are what actually wires Cognee to FalkorDB:
-export GRAPH_DATASET_DATABASE_HANDLER=falkor_graph_local
-export VECTOR_DATASET_DATABASE_HANDLER=falkor_vector_local
+# These two are what actually wires Cognee to FalkorDB. The `_named`
+# handlers (registered by scripts/cognee_falkor_naming.py) give each graph
+# a human-readable name instead of the dataset UUID — see §3.2. Use the
+# plain `falkor_graph_local` / `falkor_vector_local` to keep UUID names.
+export GRAPH_DATASET_DATABASE_HANDLER=falkor_graph_local_named
+export VECTOR_DATASET_DATABASE_HANDLER=falkor_vector_local_named
 export GRAPH_DB_URL=localhost
 export GRAPH_DB_PORT=6379
 
-# Single-user mode (skip Cognee's permission system):
-export ENABLE_BACKEND_ACCESS_CONTROL=false
+# Multi-user mode: each user gets their OWN isolated, named FalkorDB graph.
+# This is the default the sidecar ships. Set to false for legacy single-graph
+# mode (one shared graph, Cognee's permission system skipped).
+export ENABLE_BACKEND_ACCESS_CONTROL=true
 ```
+
+> **Why multiple graphs need access control:** Cognee only routes each user
+> to a separate FalkorDB graph when `ENABLE_BACKEND_ACCESS_CONTROL=true`.
+> With it off, every user/dataset collapses into one global graph regardless
+> of the handler you pick.
 
 In Python, you also **must** import the adapter for its side-effect
 registration *before* calling Cognee:
@@ -131,6 +142,49 @@ recent SQLite already, so the shim is a no-op there but does no harm.
 > A `sitecustomize.py` placed inside the venv does **not** work on
 > Ubuntu, because `/usr/lib/python3.12/sitecustomize.py` is found first
 > and shadows it. The shim must live in the entrypoint script.
+
+### 3.2. Naming graphs in FalkorDB
+
+In multi-user mode Cognee gives every user their own FalkorDB graph, but
+the community adapter names each one after the dataset **UUID**:
+
+```python
+# cognee_community_hybrid_adapter_falkor … create_dataset
+graph_db_name = f"{dataset_id}"   # e.g. "4aaeaca4a8255cdca3b9e6cb3310715c"
+```
+
+That is unreadable in `redis-cli GRAPH.LIST` and the FalkorDB browser, and
+the adapter exposes **no** config hook for it. `scripts/cognee_falkor_naming.py`
+fixes this *cleanly* — it subclasses the adapter's two dataset-database
+handlers and registers them through the adapter's **public** extension API
+(`use_dataset_database_handler`) as `falkor_graph_local_named` /
+`falkor_vector_local_named`. (No monkey-patching of private methods.)
+
+The sidecar registers and selects them by default
+(`COGNEE_FRIENDLY_GRAPH_NAMES=true`). The naming rule is fully env-driven:
+
+| Env var | Default | Meaning |
+|---------|---------|---------|
+| `COGNEE_FRIENDLY_GRAPH_NAMES` | `true` | Use named handlers (`false` → native UUID names) |
+| `COGNEE_GRAPH_NAME_OVERRIDES` | — | JSON map giving a user an exact name; **wins over everything**. Keyed by email or local-part, e.g. `{"will_agent_elizabeth":"elizabeth"}` |
+| `COGNEE_GRAPH_NAME_FROM` | `email-localpart` | Strategy when no override matches: `email-localpart` \| `dataset-id` \| `static` |
+| `COGNEE_AGENT_SEPARATOR` | `__` | For `email-localpart`, rewrites `_agent_` → this (`will_agent_elizabeth` → `will__elizabeth`) |
+| `COGNEE_GRAPH_NAME_STATIC` | — | The single shared name when `COGNEE_GRAPH_NAME_FROM=static` |
+
+So the OpenClaw user id flows through to a readable graph name:
+`will@example.com` → graph **`will`**; `will_agent_elizabeth@example.com`
+→ graph **`will__elizabeth`**. All names are sanitised to `[A-Za-z0-9_]`.
+
+> **Overrides are the easy + durable way to name a graph.** The graph name
+> is persisted in the `dataset_database` SQLite row and only computed once
+> (on first write for a new user/dataset). To pin a name that was renamed
+> out-of-band — or to keep names stable if that row is ever rebuilt — list
+> it in `COGNEE_GRAPH_NAME_OVERRIDES`.
+>
+> **Collisions:** two users/datasets that resolve to the same name share one
+> graph. The default per-user strategy assumes one logical dataset per user
+> (as in this OpenClaw setup); use overrides or `dataset-id` if you need
+> stronger isolation guarantees.
 
 ---
 
@@ -259,8 +313,9 @@ grep -a 'openclaw-cognee:' /tmp/openclaw/openclaw-$(date +%F).log | tail
 #   expect: "captured turn for guy (... chars)"
 #   and:    "injecting N memories into context"
 
-# 4. Inspect the graph
-redis-cli -p 6379 GRAPH.QUERY cognee "MATCH (n) RETURN count(n)"
+# 4. Inspect the graphs (one per user in multi-user mode)
+redis-cli -p 6379 GRAPH.LIST
+redis-cli -p 6379 GRAPH.QUERY will "MATCH (n) RETURN count(n)"
 ```
 
 ---
@@ -271,7 +326,8 @@ redis-cli -p 6379 GRAPH.QUERY cognee "MATCH (n) RETURN count(n)"
 |---|-------------------------------|---------|
 | 00 | `00_install_cognee.sh`       | Create `.venv`, install Cognee + FalkorDB adapter + FastAPI |
 | 01 | `01_test_cognee_falkor.py` / `01_run.sh` | Standalone POC: ingest 3 facts, ask 3 questions |
-| 02 | `02_cognee_sidecar.py`       | The FastAPI sidecar |
+| 02 | `02_cognee_sidecar.py`       | The FastAPI sidecar (multi-user, friendly graph names) |
+|    | `cognee_falkor_naming.py`    | Config-driven friendly FalkorDB graph-name handlers (see §3.2) |
 | 03 | `03_run_sidecar.sh`          | Foreground runner (debug only) |
 | 04 | `04_cognee_sidecar.service` / `04_install_service.sh` / `04b_status.sh` / `04c_takeover.sh` | Install + manage systemd service |
 | 05 | `05_smoke_sidecar.sh`        | curl-based remember/recall round-trip test |
@@ -376,3 +432,43 @@ Skipping step 5 will surface as either:
 If you only want to preserve memory and the upgrade scares you, snapshot
 FalkorDB first with `BGSAVE` and copy `dump.rdb` aside before
 `FLUSHALL`.
+
+---
+
+## 11. Docker deployment (alternative to the host venv)
+
+Instead of running the sidecar from a host virtualenv + systemd, you can run
+it as a container built on the official `cognee/cognee:1.1.0` image. This is
+the recommended deployment: it avoids the host SQLite gotcha (§3.1) entirely
+and pins the whole toolchain.
+
+The container does **not** run FalkorDB — point it at an already-running
+FalkorDB on the host (e.g. the `falkordb/falkordb` image with `-p 6379:6379`).
+With `network_mode: host` the sidecar reaches it at `localhost:6379`, which
+also matches the `graph_db_url` baked into any existing dataset rows so your
+graphs survive the cutover from a host-side sidecar.
+
+```bash
+cd docker
+cp .env.example .env          # fill in LLM_API_KEY + COGNEE_STATE_DIR
+docker compose up -d --build
+curl -s http://127.0.0.1:8765/healthz          # {"ok":true}
+redis-cli -p 6379 GRAPH.LIST                    # your per-user named graphs
+```
+
+Files:
+
+| File | Purpose |
+|------|---------|
+| `docker/Dockerfile` | Bakes the sidecar + naming module onto `cognee/cognee:1.1.0` |
+| `docker/docker-compose.yaml` | Runs the sidecar with `network_mode: host`, multi-user + friendly names |
+| `docker/.env.example` | `LLM_API_KEY`, `COGNEE_STATE_DIR`, optional `COGNEE_GRAPH_NAME_OVERRIDES` |
+
+Graph naming is configured the same way as the host sidecar (§3.2) — set the
+`COGNEE_GRAPH_NAME_*` vars in `.env` / the compose `environment:` block.
+
+> **Migrating from a host-side sidecar:** stop and disable the host service
+> (`systemctl stop/disable cognee-sidecar`) so it releases port 8765, point
+> `COGNEE_STATE_DIR` at the existing `~/.cognee`, then `docker compose up -d`.
+> The container then serves the same `127.0.0.1:8765` the OpenClaw plugin
+> already targets.

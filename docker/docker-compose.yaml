@@ -1,0 +1,70 @@
+# docker-compose for the Cognee sidecar.
+#
+# IMPORTANT: this does NOT define the FalkorDB container. FalkorDB is expected
+# to be already running and reachable on the host at localhost:6379 (e.g. the
+# falkordb/falkordb image with `-p 6379:6379`). With `network_mode: host` the
+# sidecar reaches it at localhost:6379 — which also matches the graph_db_url
+# baked into any existing dataset rows, so recall keeps working without a DB
+# migration.
+#
+# Build context is the repo root so the Dockerfile can COPY from scripts/.
+
+services:
+  cognee-sidecar:
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile
+    image: cognee-sidecar-falkor:latest
+    container_name: cognee-sidecar
+    network_mode: host
+    # The upstream cognee/cognee:1.1.0 image ships an /app/entrypoint.sh that
+    # runs alembic + starts cognee.api.client on :8000 and ignores our CMD.
+    # Bypass it: our sidecar calls create_db_and_tables() itself on startup.
+    entrypoint: ["/app/.venv/bin/uvicorn"]
+    command: ["02_cognee_sidecar:app", "--host", "127.0.0.1", "--port", "8765", "--log-level", "info"]
+    environment:
+      # --- LLM ------------------------------------------------------
+      LLM_API_KEY: ${LLM_API_KEY}
+      LLM_PROVIDER: openai
+      LLM_MODEL: openai/gpt-4.1
+      BAML_LLM_PROVIDER: openai
+      BAML_LLM_MODEL: gpt-4.1
+      BAML_LLM_API_KEY: ${LLM_API_KEY}
+      EMBEDDING_PROVIDER: openai
+      EMBEDDING_MODEL: openai/text-embedding-3-small
+      EMBEDDING_DIMENSIONS: "1536"
+      # 1.1.0 added a startup LLM connectivity test that times out from inside
+      # the container (slow first TLS handshake).
+      COGNEE_SKIP_CONNECTION_TEST: "true"
+      # --- FalkorDB (graph + vector via the hybrid adapter) ---------
+      FALKOR_HOST: localhost
+      FALKOR_PORT: "6379"
+      GRAPH_DATABASE_PROVIDER: falkordb
+      GRAPH_DB_URL: localhost
+      GRAPH_DB_PORT: "6379"
+      VECTOR_DB_PROVIDER: falkordb
+      # --- Multi-user posture: per-user isolated, named graphs ------
+      ENABLE_BACKEND_ACCESS_CONTROL: "true"
+      # --- Friendly graph naming (see scripts/cognee_falkor_naming.py)
+      COGNEE_FRIENDLY_GRAPH_NAMES: "true"
+      COGNEE_GRAPH_NAME_FROM: "email-localpart"
+      COGNEE_AGENT_SEPARATOR: "__"
+      # Pin specific users to an exact graph name (durably survives a row
+      # rebuild). Example keeps the historical "elizabeth" graph name:
+      # COGNEE_GRAPH_NAME_OVERRIDES: '{"will_agent_elizabeth": "elizabeth"}'
+      COGNEE_GRAPH_NAME_OVERRIDES: ${COGNEE_GRAPH_NAME_OVERRIDES:-}
+      # --- 1.1.0 resource caps --------------------------------------
+      DATABASE_MAX_LRU_CACHE_SIZE: "4"
+      DATASET_QUEUE_MAX_CONCURRENT: "2"
+    volumes:
+      # Persist cognee's relational DB (Users, Datasets, ACL) + logs. Point
+      # COGNEE_STATE_DIR at the host dir holding existing ~/.cognee state to
+      # preserve graphs across the cutover from a host-side sidecar.
+      - ${COGNEE_STATE_DIR:-./cognee-state}:/root/.cognee
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD-SHELL", "python -c \"import urllib.request,sys; sys.exit(0 if urllib.request.urlopen('http://127.0.0.1:8765/healthz',timeout=3).status==200 else 1)\""]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 30s
