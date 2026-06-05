@@ -31,6 +31,7 @@ RUN echo "import cognee_community_hybrid_adapter_falkor.register" \
 WORKDIR /app/sidecar
 COPY scripts/02_cognee_sidecar.py ./02_cognee_sidecar.py
 COPY scripts/cognee_falkor_naming.py ./cognee_falkor_naming.py
+COPY scripts/cognee_falkor_resilience.py ./cognee_falkor_resilience.py
 
 # Persistent state (Users + Datasets relational DB, logs) lives under
 # /root/.cognee inside the container — mount a volume on it via compose.

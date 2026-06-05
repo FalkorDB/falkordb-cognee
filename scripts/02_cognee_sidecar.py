@@ -106,6 +106,15 @@ from cognee_falkor_naming import register_named_handlers
 
 register_named_handlers()
 
+# Make recall resilient: a single legacy/malformed node or edge (missing
+# id / source_node_id / target_node_id) would otherwise crash the adapter's
+# whole-graph read and make recall return "no information" for the entire
+# graph. Skip such records instead. Disable with COGNEE_RESILIENT_GRAPH_READ=false.
+if os.getenv("COGNEE_RESILIENT_GRAPH_READ", "true").lower() == "true":
+    from cognee_falkor_resilience import install_resilient_graph_read
+
+    install_resilient_graph_read()
+
 
 def _configure() -> None:
     base = pathlib.Path.home() / ".cognee"

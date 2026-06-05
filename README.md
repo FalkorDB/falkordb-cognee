@@ -108,6 +108,7 @@ falkordb-cognee/
 │   ├── 01_test_cognee_falkor.py / 01_run.sh
 │   ├── 02_cognee_sidecar.py
 │   ├── cognee_falkor_naming.py  ← friendly FalkorDB graph names (config-driven)
+│   ├── cognee_falkor_resilience.py ← recall survives malformed graph records
 │   ├── 03_run_sidecar.sh
 │   ├── 04_cognee_sidecar.service / 04_install_service.sh / 04b_status.sh / 04c_takeover.sh
 │   ├── 05_smoke_sidecar.sh

@@ -186,6 +186,30 @@ So the OpenClaw user id flows through to a readable graph name:
 > (as in this OpenClaw setup); use overrides or `dataset-id` if you need
 > stronger isolation guarantees.
 
+### 3.3. Resilient graph reads (recall won't crash on bad records)
+
+`/recall` projects the whole graph through the adapter's `get_graph_data()`,
+which assumes **every** node has an `id` property and **every** edge has
+`source_node_id` / `target_node_id`. A single legacy or partially-written
+record that lacks one of those keys raises `KeyError` and aborts the entire
+projection — so recall silently returns *"no information"* for the whole
+graph even though almost all of it is fine.
+
+`scripts/cognee_falkor_resilience.py` replaces `get_graph_data()` with a
+tolerant version that **skips** malformed records (and logs how many) instead
+of crashing. The adapter exposes no hook for this, so this is a deliberate,
+isolated runtime patch. The sidecar installs it by default; disable with
+`COGNEE_RESILIENT_GRAPH_READ=false`.
+
+> If you ever see `Skipped N malformed node(s)/edge(s)` in the sidecar log,
+> those records are missing `id` / `source_node_id` / `target_node_id`. You
+> can repair them in FalkorDB, e.g.:
+> ```
+> redis-cli GRAPH.QUERY <graph> "MATCH (n) WHERE n.id IS NULL SET n.id = '<uuid>'"
+> redis-cli GRAPH.QUERY <graph> "MATCH (a)-[r]->(b) WHERE r.source_node_id IS NULL \
+>   OR r.target_node_id IS NULL SET r.source_node_id = a.id, r.target_node_id = b.id"
+> ```
+
 ---
 
 ## 4. The sidecar (Python FastAPI)
@@ -328,6 +352,7 @@ redis-cli -p 6379 GRAPH.QUERY will "MATCH (n) RETURN count(n)"
 | 01 | `01_test_cognee_falkor.py` / `01_run.sh` | Standalone POC: ingest 3 facts, ask 3 questions |
 | 02 | `02_cognee_sidecar.py`       | The FastAPI sidecar (multi-user, friendly graph names) |
 |    | `cognee_falkor_naming.py`    | Config-driven friendly FalkorDB graph-name handlers (see §3.2) |
+|    | `cognee_falkor_resilience.py`| Tolerant graph read so recall survives malformed records (see §3.3) |
 | 03 | `03_run_sidecar.sh`          | Foreground runner (debug only) |
 | 04 | `04_cognee_sidecar.service` / `04_install_service.sh` / `04b_status.sh` / `04c_takeover.sh` | Install + manage systemd service |
 | 05 | `05_smoke_sidecar.sh`        | curl-based remember/recall round-trip test |
