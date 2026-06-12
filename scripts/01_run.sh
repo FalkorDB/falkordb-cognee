@@ -1,4 +1,7 @@
 #!/usr/bin/env bash
+# OUT OF DATE: superseded by the official Cognee OpenClaw integration:
+# https://github.com/topoteretes/cognee-integrations/tree/main/integrations/openclaw
+# Kept as a working reference.
 # Phase 1 runner: activate the cognee venv and run the standalone POC.
 set -euo pipefail
 

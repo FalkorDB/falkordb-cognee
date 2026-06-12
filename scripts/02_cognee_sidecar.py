@@ -1,4 +1,11 @@
 # --- BEGIN sqlite3 shim ------------------------------------------------------
+# OUT OF DATE: this custom sidecar is superseded by the official Cognee
+# OpenClaw integration (plugin + Cognee API server). New setups should use
+# https://github.com/topoteretes/cognee-integrations/tree/main/integrations/openclaw
+# and its skills/falkor/SKILL.md FalkorDB setup skill. Kept as a working
+# minimal reference. The naming and resilience modules next to this file
+# remain current and also work with the official stack.
+#
 # Cognee 1.x uses a SELECT pattern that segfaults inside the system
 # libsqlite3 shipped on Ubuntu 24.04 (3.45.1) and other older distros:
 #

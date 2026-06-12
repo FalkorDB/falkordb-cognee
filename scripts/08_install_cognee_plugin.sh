@@ -1,4 +1,8 @@
 #!/usr/bin/env bash
+# OUT OF DATE: this custom sidecar setup is superseded by the official Cognee
+# OpenClaw integration. New setups should use the plugin at
+# https://github.com/topoteretes/cognee-integrations/tree/main/integrations/openclaw
+# and its skills/falkor/SKILL.md FalkorDB setup skill. Kept as a working reference.
 # Install the openclaw-cognee plugin and wire it into ~/.openclaw/openclaw.json.
 # - Copies plugin source to ~/.openclaw/extensions/openclaw-cognee/
 # - Disables the existing openclaw-mem0 plugin (kept on disk for rollback)

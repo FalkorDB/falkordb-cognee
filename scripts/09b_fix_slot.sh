@@ -1,4 +1,7 @@
 #!/usr/bin/env bash
+# OUT OF DATE: superseded by the official Cognee OpenClaw integration:
+# https://github.com/topoteretes/cognee-integrations/tree/main/integrations/openclaw
+# Kept as a working reference.
 # Properly set plugins.slots.memory -> openclaw-cognee and remove the bogus
 # plugins.memorySlot key, then restart the gateway.
 set -euo pipefail

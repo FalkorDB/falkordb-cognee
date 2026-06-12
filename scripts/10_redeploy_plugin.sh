@@ -1,4 +1,7 @@
 #!/usr/bin/env bash
+# OUT OF DATE: superseded by the official Cognee OpenClaw integration:
+# https://github.com/topoteretes/cognee-integrations/tree/main/integrations/openclaw
+# Kept as a working reference.
 # Re-deploy the openclaw-cognee plugin and restart gateway.
 set -euo pipefail
 LOG="$HOME/work/openclaw/config/cognee-plugin-redeploy.txt"

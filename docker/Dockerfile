@@ -1,3 +1,8 @@
+# OUT OF DATE: this custom sidecar image is superseded by the official Cognee
+# OpenClaw integration. New setups should follow the FalkorDB skill at
+# https://github.com/topoteretes/cognee-integrations/blob/main/integrations/openclaw/skills/falkor/SKILL.md
+# which runs the stock Cognee API server instead. Kept as a working reference.
+#
 # Cognee sidecar image — bakes our customized sidecar on top of the official
 # cognee 1.1.0 image so the container keeps:
 #   - friendly, config-driven FalkorDB graph names (cognee_falkor_naming.py)

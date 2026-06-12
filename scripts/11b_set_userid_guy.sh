@@ -1,4 +1,7 @@
 #!/usr/bin/env bash
+# OUT OF DATE: superseded by the official Cognee OpenClaw integration:
+# https://github.com/topoteretes/cognee-integrations/tree/main/integrations/openclaw
+# Kept as a working reference.
 set -euo pipefail
 CONFIG="$HOME/.openclaw/openclaw.json"
 LOG="$HOME/work/openclaw/config/cognee-set-userid.txt"

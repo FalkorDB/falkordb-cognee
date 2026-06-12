@@ -1,3 +1,8 @@
+# OUT OF DATE: this custom sidecar compose is superseded by the official Cognee
+# OpenClaw integration. New setups should follow the FalkorDB skill at
+# https://github.com/topoteretes/cognee-integrations/blob/main/integrations/openclaw/skills/falkor/SKILL.md
+# Kept as a working reference.
+#
 # docker-compose for the Cognee sidecar.
 #
 # IMPORTANT: this does NOT define the FalkorDB container. FalkorDB is expected

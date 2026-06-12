@@ -1,3 +1,8 @@
+// OUT OF DATE: this custom plugin is superseded by the official cognee-openclaw
+// plugin at https://github.com/topoteretes/cognee-integrations/tree/main/integrations/openclaw
+// which adds multi scope memory, per agent graphs, sessions and a CLI.
+// Kept as a working minimal reference.
+//
 // openclaw-cognee: memory plugin that delegates to the cognee-sidecar over HTTP.
 // Hooks: before_agent_start (recall), agent_end (capture).
 // Sidecar API:
