@@ -48,6 +48,13 @@ Configuration (environment variables)
       - ``email-localpart`` (default) — derive from the user's email
         local-part, rewriting ``_agent_`` to ``COGNEE_AGENT_SEPARATOR``
         (``will@..`` -> ``will``; ``will_agent_elizabeth@..`` -> ``will__elizabeth``).
+        Use when each caller maps to a distinct Cognee user.
+      - ``dataset-name`` — name the graph after the Cognee dataset's own
+        name (looked up from the relational DB by ``dataset_id``). Use when
+        a single Cognee user owns many datasets, e.g. the official
+        ``cognee-openclaw`` plugin's per-agent datasets: dataset
+        ``openclaw-agent-elizabeth`` -> graph ``openclaw_agent_elizabeth``.
+        Overrides are also matched against the dataset name in this mode.
       - ``dataset-id`` — keep the adapter's native UUID name.
       - ``static`` — force every dataset to ``COGNEE_GRAPH_NAME_STATIC``
         (all datasets then SHARE one graph; a warning is logged).
@@ -117,8 +124,9 @@ def _overrides() -> dict:
 def friendly_name(user, dataset_id) -> str:
     """Resolve the FalkorDB graph/vector name for a (user, dataset).
 
-    Falls back to the adapter's native ``str(dataset_id)`` whenever a rule
-    cannot produce a usable name.
+    Synchronous strategies only; the async ``dataset-name`` strategy is
+    handled by :func:`resolve_name`. Falls back to the adapter's native
+    ``str(dataset_id)`` whenever a rule cannot produce a usable name.
     """
     fallback = f"{dataset_id}"
     email = (getattr(user, "email", None) or "").strip()
@@ -151,13 +159,49 @@ def friendly_name(user, dataset_id) -> str:
     return _sanitize(local.replace("_agent_", separator, 1)) or fallback
 
 
+async def _dataset_name_from_db(dataset_id) -> str | None:
+    """Look up Dataset.name in Cognee's relational DB (row exists by the time
+    dataset-database handlers run — get_or_create_dataset_database creates the
+    dataset first)."""
+    try:
+        from sqlalchemy import select
+
+        from cognee.infrastructure.databases.relational import get_relational_engine
+        from cognee.modules.data.models import Dataset
+
+        engine = get_relational_engine()
+        async with engine.get_async_session() as session:
+            return await session.scalar(select(Dataset.name).where(Dataset.id == dataset_id))
+    except Exception as exc:
+        logger.warning("dataset-name lookup failed for %s (%s); using fallback", dataset_id, exc)
+        return None
+
+
+async def resolve_name(user, dataset_id) -> str:
+    """Async naming entrypoint used by the handlers.
+
+    Adds the ``dataset-name`` strategy (relational-DB lookup, with overrides
+    matched against the dataset name) on top of :func:`friendly_name`.
+    """
+    if os.getenv("COGNEE_GRAPH_NAME_FROM", "email-localpart").lower() == "dataset-name":
+        fallback = f"{dataset_id}"
+        name = await _dataset_name_from_db(dataset_id)
+        if not name:
+            return fallback
+        overrides = _overrides()
+        if name in overrides:
+            return _sanitize(overrides[name]) or fallback
+        return _sanitize(name) or fallback
+    return friendly_name(user, dataset_id)
+
+
 class FalkorGraphHandlerNamed(FalkorDatasetDatabaseHandlerGraphLocal):
     """Graph handler that swaps the UUID graph name for a friendly one."""
 
     @classmethod
     async def create_dataset(cls, dataset_id: Optional[UUID], user) -> dict:
         info = await super().create_dataset(dataset_id, user)
-        info["graph_database_name"] = friendly_name(user, dataset_id)
+        info["graph_database_name"] = await resolve_name(user, dataset_id)
         return info
 
 
@@ -167,7 +211,7 @@ class FalkorVectorHandlerNamed(FalkorDatasetDatabaseHandlerVectorLocal):
     @classmethod
     async def create_dataset(cls, dataset_id: Optional[UUID], user) -> dict:
         info = await super().create_dataset(dataset_id, user)
-        info["vector_database_name"] = friendly_name(user, dataset_id)
+        info["vector_database_name"] = await resolve_name(user, dataset_id)
         return info
 
 
