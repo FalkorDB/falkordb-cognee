@@ -1,5 +1,14 @@
 # Cognee + FalkorDB memory backend for OpenClaw
 
+> **Prefer the official integration.** Cognee now ships an official OpenClaw
+> plugin and a self contained FalkorDB setup skill. They cover most of what
+> this guide builds by hand and add multi scope memory, per agent graphs,
+> sessions and a CLI. See
+> [cognee-integrations/integrations/openclaw](https://github.com/topoteretes/cognee-integrations/tree/main/integrations/openclaw)
+> and the
+> [FalkorDB skill](https://github.com/topoteretes/cognee-integrations/blob/main/integrations/openclaw/skills/falkor/SKILL.md).
+> This guide remains as a minimal reference for the custom sidecar approach.
+
 This folder contains everything that was used to set up an
 **`openclaw-cognee`** memory plugin for OpenClaw, backed entirely by
 **FalkorDB** (graph + vectors) through a **Cognee** Python sidecar.

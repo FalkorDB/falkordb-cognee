@@ -6,6 +6,44 @@ vectors in one place — and expose it to applications (here: the
 [OpenClaw](https://www.openclaw.com/) gateway) through a small Python
 sidecar plus a Node plugin.
 
+## ➡️ Recommended: the official Cognee integration for OpenClaw
+
+Cognee now ships an **official OpenClaw integration** that supersedes the
+custom plugin and sidecar in this repo for most users. Start there:
+
+- **[`cognee-integrations/integrations/openclaw`](https://github.com/topoteretes/cognee-integrations/tree/main/integrations/openclaw)**.
+  The official `cognee-openclaw` memory plugin. With FalkorDB behind it you get
+  one named graph per agent plus:
+  - **Multi scope memory**: separate datasets for company, user and agent scope. Each dataset is its own FalkorDB graph.
+  - **Per agent graphs**: with more than one agent configured, each agent's files and chat route to `{agentDatasetPrefix}-{agentId}`, its own graph.
+  - **Auto recall and auto index**: memories are injected before each agent run and memory markdown files sync to Cognee after each turn.
+  - **Session tracking**: recall turns are captured as session Q&A. `session_end` bridges them into the graph via `/improve`.
+  - **14 search types**: from `CHUNKS` vector search to `GRAPH_COMPLETION` and chain of thought graph reasoning, all answered from the FalkorDB graph.
+  - **CLI**: `openclaw cognee setup | index | status | health | scopes | forget | improve`.
+- **[`skills/falkor/SKILL.md`](https://github.com/topoteretes/cognee-integrations/blob/main/integrations/openclaw/skills/falkor/SKILL.md)**.
+  A self contained, agent runnable recipe that builds a custom Cognee image
+  with the FalkorDB hybrid adapter registered through `sitecustomize.py`,
+  runs Cognee plus FalkorDB with docker compose, verifies the adapter
+  actually registered, and wires the OpenClaw plugin to it. FalkorDB serves
+  as **both** the graph store and the vector store, with per dataset
+  isolation (`ENABLE_BACKEND_ACCESS_CONTROL=True`) so every dataset gets its
+  own FalkorDB graph.
+
+What this repo still adds on top of the official path:
+
+- `scripts/cognee_falkor_naming.py`: human readable FalkorDB graph names
+  (`agent_will`) instead of dataset UUID keys, config driven, including a
+  `dataset-name` strategy built for the official plugin's per agent datasets.
+- `scripts/cognee_falkor_resilience.py`: a tolerant graph read so one
+  malformed record cannot blank out recall for a whole graph.
+- Operational learnings in [`docs/SETUP.md`](docs/SETUP.md): rate limit safe
+  model pins, `DATASET_QUEUE_MAX_CONCURRENT=1` for bulk ingest, SQLite lock
+  avoidance, and why small per topic memory files extract reliably while one
+  big `MEMORY.md` does not.
+
+The custom sidecar documented below still works and remains a minimal
+reference, but new setups should prefer the official plugin plus skill above.
+
 ## What this repo is for
 
 Cognee, by default, expects a separate graph store (Kuzu / Neo4j) **and** a
@@ -164,13 +202,12 @@ cd scripts
 ## Status
 
 - ✅ Standalone Cognee + FalkorDB POC working
-- ✅ FastAPI sidecar running both as a systemd service (`cognee-sidecar.service`)
-  and as a Docker container (`docker/`)
+- ✅ **Production setup migrated to the official [`cognee-openclaw`](https://github.com/topoteretes/cognee-integrations/tree/main/integrations/openclaw) plugin** with the Cognee API server (per agent FalkorDB graphs, named via `cognee_falkor_naming.py`)
+- ✅ FastAPI sidecar still available both as a systemd service (`cognee-sidecar.service`)
+  and as a Docker container (`docker/`) for minimal reference setups
 - ✅ Per-user **multiple, isolated FalkorDB graphs** with human-readable,
   config-driven names (`scripts/cognee_falkor_naming.py`, see
   [`docs/SETUP.md` §3.2](docs/SETUP.md))
-- ✅ OpenClaw memory plugin (`openclaw-cognee`) registered and capturing /
-  recalling turns per user
 - 🚧 `examples/` to be filled with sample prompts / graph queries
 
 ## Why FalkorDB
