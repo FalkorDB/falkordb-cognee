@@ -54,7 +54,9 @@ specific environment variables, a side-effect import, and matching
 adapter-version requirements.
 
 This repo is a **working, end-to-end recipe** for that setup, plus the
-glue we used to plug the result into OpenClaw as a memory plugin:
+glue we used to plug the result into OpenClaw as a memory plugin
+(legacy reference architecture, see the official integration above for
+new setups):
 
 ```
    Application (OpenClaw gateway, etc.)
@@ -166,7 +168,10 @@ falkordb-cognee/
 └── examples/               ← (placeholder for sample queries / demos)
 ```
 
-## Quick start
+## Quick start (legacy custom sidecar)
+
+> For new setups use the official integration linked at the top. This quick
+> start builds the legacy sidecar and custom plugin, kept as a reference.
 
 The whole flow is documented in [`docs/SETUP.md`](docs/SETUP.md). The short
 version (assuming you have FalkorDB on `localhost:6379`, Python 3.11–3.13,
