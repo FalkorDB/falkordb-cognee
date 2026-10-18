@@ -225,5 +225,4 @@ cd scripts
 
 ## License
 
-Personal setup notes; no warranty. The bundled scripts are MIT-style — do
-whatever you want with them.
+This project is licensed under the MIT License. See [LICENSE](LICENSE) for details.
